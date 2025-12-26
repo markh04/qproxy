@@ -32,7 +32,7 @@ go build server/qserver.go
 '-----------'            '-----------'
 ```
 
-Опционально: Docker
+Опционально: Docker (запуск клиента)
 ```
 1. Указать ключи в docker-compose.yml
 2. docker compose build
