@@ -1,0 +1,3 @@
+[submodule "quic-go"]
+	path = quic-go
+	url = https://github.com/markh04/quic-go

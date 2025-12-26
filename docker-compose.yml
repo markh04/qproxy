@@ -1,0 +1,8 @@
+services:
+  qproxy:
+    build: .
+    ports:
+      - "2222:2222"
+    volumes:
+      - "./private:/qproxy/private:rw"
+    command: ["/qproxy/qclient", "--listen", "0.0.0.0:2222", "127.0.0.1:8443"]
