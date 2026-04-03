@@ -17,6 +17,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"fmt"
 )
 
 
@@ -24,8 +25,25 @@ import (
 func main() {
 
 	local_addr := flag.String("listen", "127.0.0.1:8443", "Local address for inbound TCP connections")
+	max_pto := flag.Duration("max-pto", 30*time.Second, "Maximum value of PTO backoff in seconds")
+	max_idle := flag.Duration("max-idle", 3600*time.Second, "Maximum period of network inactivity in seconds")
+	ping_period := flag.Duration("ping-period", 60*time.Second, "Period between sending PING-frames in seconds")
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <input>\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "Arguments:")
+		fmt.Fprintln(os.Stderr, "  dist_addr    Destination address")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Options:")
+		flag.PrintDefaults()
+	}
 
 	flag.Parse()
+
+	if flag.NArg() != 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	cmd_args := flag.Args()
 	dst_addr := &cmd_args[0]
@@ -70,14 +88,10 @@ func main() {
 	tr := quic.Transport{ Conn: udpConn }
 	quic_config := &quic.Config{
 		Versions: []quic.Version{quic.Version2, quic.Version1},
-		MaxIdleTimeout:        600 * time.Second,
+		MaxIdleTimeout:        *max_idle,
 		HandshakeIdleTimeout:  10 * time.Second,
-		KeepAlivePeriod:       0,
-		DisablePathMTUDiscovery: true,
-		InitialStreamReceiveWindow:     512 * 1024,
-		InitialConnectionReceiveWindow: 2 * 1024 * 1024,
-		MaxConnectionReceiveWindow:     16 * 1024 * 1024,
-		EnableDatagrams: true,
+		KeepAlivePeriod:       *ping_period,
+		MaxPTODuration: *max_pto,
 	}
 
 	ln, err := tr.Listen(tls_config, quic_config)

@@ -12,13 +12,32 @@ import (
 	"flag"
 	"os"
 	"errors"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
 
 	local_addr := flag.String("listen", "127.0.0.1:8080", "Local address for inbound TCP connections")
+	max_pto := flag.Duration("max-pto", 3*time.Second, "Maximum value of PTO backoff in seconds")
+	max_idle := flag.Duration("max-idle", 3600*time.Second, "Maximum period of network inactivity in seconds")
+	ping_period := flag.Duration("ping-period", 20*time.Second, "Period between sending PING-frames in seconds")
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <input>\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "Arguments:")
+		fmt.Fprintln(os.Stderr, "  dist_addr    Destination address")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Options:")
+		flag.PrintDefaults()
+	}
 
 	flag.Parse()
+
+	if flag.NArg() != 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	cmd_args := flag.Args()
 	dst_addr := &cmd_args[0]
@@ -57,14 +76,10 @@ func main() {
 	tls.KeyLogWriter = keylog
 
 	quic_config := &quic.Config{
-		MaxIdleTimeout:        600 * time.Second,
-		HandshakeIdleTimeout:  5 * time.Second,
-		KeepAlivePeriod:       0,
-		DisablePathMTUDiscovery: true,
-		InitialStreamReceiveWindow:     512 * 1024,
-		InitialConnectionReceiveWindow: 2 * 1024 * 1024,
-		MaxConnectionReceiveWindow:     16 * 1024 * 1024,
-		EnableDatagrams: true,
+		MaxIdleTimeout:        *max_idle,
+		HandshakeIdleTimeout:  2 * time.Second,
+		KeepAlivePeriod:       *ping_period,
+		MaxPTODuration: *max_pto,
 	}
 
 	addr, err := net.ResolveUDPAddr("udp", *dst_addr)
@@ -79,20 +94,33 @@ func main() {
 
 	defer quic_conn.CloseWithError(0, "bye")
 
-	tcp, err := net.Listen("tcp", *local_addr)
+	loc_addr, err := net.ResolveTCPAddr("tcp", *local_addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go keepAliveSender(quic_conn)
+	tcp, err := net.ListenTCP("tcp", loc_addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	for {
-		tcp_conn, err := tcp.Accept()
-		if err != nil {
-			log.Println(err)
-			continue
+		select {
+		case <-ctx.Done():
+			fmt.Println("Exiting...")
+			return
+		default:
+			tcp.SetDeadline(time.Now().Add(1 * time.Second))
+			tcp_conn, err := tcp.Accept()
+			if err != nil {
+				//log.Println(err)
+				continue
+			}
+			go handleConnection(quic_conn, &tcp_conn)
 		}
-		go handleConnection(quic_conn, &tcp_conn)
 	}
 
 }
@@ -137,16 +165,4 @@ func handleConnection(quic_conn *quic.Conn, tcp_conn_ *net.Conn) {
 
 	<-done
 
-}
-
-func keepAliveSender(quic_conn *quic.Conn) {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		go sendKeepAlive(quic_conn)
-	}
-}
-
-func sendKeepAlive(quic_conn *quic.Conn) {
-	quic_conn.SendDatagram([]byte("KEEP_ALIVE"))
 }
