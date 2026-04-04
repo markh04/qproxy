@@ -22,6 +22,8 @@ func main() {
 	max_pto := flag.Duration("max-pto", 3*time.Second, "Maximum value of PTO backoff in seconds")
 	max_idle := flag.Duration("max-idle", 3600*time.Second, "Maximum period of network inactivity in seconds")
 	ping_period := flag.Duration("ping-period", 20*time.Second, "Period between sending PING-frames in seconds")
+	ignore_cert := flag.Bool("skip-cert-verify", false, "Skip checking the server SSL certificate")
+	keylog_file := flag.String("keylog", "", "Keylog file to store session keys")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <input>\n\n", os.Args[0])
@@ -60,26 +62,28 @@ func main() {
 	defer cancel()
 
 	tls := &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: *ignore_cert,
 		NextProtos:         []string{"h3"},
 	}
 
-	keylog, err := os.OpenFile(
-		"private/sslkeys.log",
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND,
-		0600,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
+	if *keylog_file != "" {
+		keylog, err := os.OpenFile(
+			*keylog_file,
+			os.O_WRONLY|os.O_CREATE|os.O_APPEND,
+			0600,
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	tls.KeyLogWriter = keylog
+		tls.KeyLogWriter = keylog
+	}
 
 	quic_config := &quic.Config{
 		MaxIdleTimeout:        *max_idle,
 		HandshakeIdleTimeout:  2 * time.Second,
 		KeepAlivePeriod:       *ping_period,
-		MaxPTODuration: *max_pto,
+		MaxPTODuration:        *max_pto,
 	}
 
 	addr, err := net.ResolveUDPAddr("udp", *dst_addr)

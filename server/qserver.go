@@ -28,6 +28,8 @@ func main() {
 	max_pto := flag.Duration("max-pto", 30*time.Second, "Maximum value of PTO backoff in seconds")
 	max_idle := flag.Duration("max-idle", 3600*time.Second, "Maximum period of network inactivity in seconds")
 	ping_period := flag.Duration("ping-period", 60*time.Second, "Period between sending PING-frames in seconds")
+	cert_path := flag.String("cert", "", "Path to the cert file")
+	key_path := flag.String("key", "", "Path to the private key file")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <input>\n\n", os.Args[0])
@@ -51,10 +53,12 @@ func main() {
 	var tls_cert tls.Certificate
 	var err error
 
-	if len(cmd_args) == 3 {
-		ssl_crt_path := cmd_args[1]
-		ssl_key_path := cmd_args[2]
-		tls_cert, err = tls.LoadX509KeyPair(ssl_crt_path, ssl_key_path)
+	if *cert_path != "" || *key_path != "" {
+		if *cert_path == "" || *key_path == "" {
+			flag.Usage()
+			os.Exit(1)
+		}
+		tls_cert, err = tls.LoadX509KeyPair(*cert_path, *key_path)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -91,7 +95,7 @@ func main() {
 		MaxIdleTimeout:        *max_idle,
 		HandshakeIdleTimeout:  10 * time.Second,
 		KeepAlivePeriod:       *ping_period,
-		MaxPTODuration: *max_pto,
+		MaxPTODuration:        *max_pto,
 	}
 
 	ln, err := tr.Listen(tls_config, quic_config)
@@ -166,7 +170,7 @@ func generateCert() tls.Certificate {
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
-			Organization: []string{"Test RSA Cert"},
+			Organization: []string{"localhost"},
 		},
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(24 * time.Hour),
