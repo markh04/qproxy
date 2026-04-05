@@ -32,7 +32,7 @@ func main() {
 	key_path := flag.String("key", "", "Path to the private key file")
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <input>\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] <dist_addr>\n\n", os.Args[0])
 		fmt.Fprintln(os.Stderr, "Arguments:")
 		fmt.Fprintln(os.Stderr, "  dist_addr    Destination address")
 		fmt.Fprintln(os.Stderr, "")

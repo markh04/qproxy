@@ -13,7 +13,7 @@ go build server/qserver.go
 Запуск:
 ```
 # Сервер
-./qserver [--listen <addr:port local>] <addr:port target> [/path/to/tls/pubkey /path/to/tls/privkey]
+./qserver [--listen <addr:port local>] <addr:port target>
 
 # Клиент
 ./qclient [--listen <addr:port local>] <addr:port server>
