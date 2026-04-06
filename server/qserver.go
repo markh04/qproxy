@@ -72,18 +72,6 @@ func main() {
 
 	local_addr_b, err := net.ResolveUDPAddr("udp", *local_addr)
 
-	keylog, err := os.OpenFile(
-		"sslkeys.log",
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND,
-		0600,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	tls_config.KeyLogWriter = keylog
-
-
 	udpConn, err := net.ListenUDP("udp4", local_addr_b)
 	if err != nil {
 		log.Fatal(err)
@@ -127,7 +115,7 @@ func handleConnection(conn *quic.Conn, dst_addr *string) {
 
 func handleStream(stream *quic.Stream, dst_addr *string) {
 	defer stream.Close()
-	log.Println(stream)
+	// log.Println(stream)
 	conn, err := net.Dial("tcp", *dst_addr)
 	if err != nil {
     	log.Println(err)

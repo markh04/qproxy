@@ -14,6 +14,8 @@ import (
 	"errors"
 	"os/signal"
 	"syscall"
+	"strings"
+	"golang.org/x/net/idna"
 )
 
 func main() {
@@ -61,9 +63,15 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	domain, err := idna.ToASCII(strings.Split(*dst_addr, ":")[0])
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	tls := &tls.Config{
 		InsecureSkipVerify: *ignore_cert,
 		NextProtos:         []string{"h3"},
+		ServerName:         domain,
 	}
 
 	if *keylog_file != "" {
@@ -133,6 +141,10 @@ func handleConnection(quic_conn *quic.Conn, tcp_conn_ *net.Conn) {
 
 	stream, err := quic_conn.OpenStreamSync(context.Background())
 	if err != nil {
+		var idleErr *quic.IdleTimeoutError
+		if errors.As(err, &idleErr) {
+			log.Fatal(err)
+		}
 		log.Println(err)
 		tcp_conn.SetLinger(0)
 		tcp_conn.Close()
@@ -146,8 +158,12 @@ func handleConnection(quic_conn *quic.Conn, tcp_conn_ *net.Conn) {
 	go func() {
 		_, err2 := io.Copy(stream, tcp_conn)
 		if err2 != nil {
+			var idleErr *quic.IdleTimeoutError
 			if errors.Is(err2, io.EOF) {
 				stream.Close()
+			} else if errors.As(err, &idleErr) {
+				stream.CancelWrite(0x10)
+				log.Fatal("QUIC Connection timeout")
 			} else {
 				stream.CancelWrite(0x10)
 			}
@@ -158,8 +174,13 @@ func handleConnection(quic_conn *quic.Conn, tcp_conn_ *net.Conn) {
 	go func() {
 		_, err2 := io.Copy(tcp_conn, stream)
 		if err2 != nil {
+			var idleErr *quic.IdleTimeoutError
 			if !errors.Is(err, io.EOF) {
 				tcp_conn.SetLinger(0)
+			} else if errors.As(err, &idleErr) {
+				tcp_conn.SetLinger(0)
+				tcp_conn.Close()
+				log.Fatal("QUIC Connection timeout")
 			}
 			tcp_conn.Close()
 		}
